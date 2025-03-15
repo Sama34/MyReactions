@@ -577,7 +577,7 @@ if(!$mybb->input['action'])
 	}
 	while($reaction = $db->fetch_array($query))
 	{
-	    $item = '<fieldset class="float_left reaction_item reaction_facebook_'.($reaction['reaction_facebook']?$reaction['reaction_facebook']:'none').'" style="width: 112px;margin: 5px"><strong style="display:inline-block;min-height:30px">'.htmlspecialchars_uni($reaction['reaction_name']).'</strong><div>';
+	    $item = '<fieldset class="float_left reaction_item reaction_facebook_'.($reaction['reaction_facebook'] ?? 'none').'" style="width: 112px;margin: 5px"><strong style="display:inline-block;min-height:30px">'.htmlspecialchars_uni($reaction['reaction_name']).'</strong><div>';
 
 	    if(my_strpos($reaction['reaction_image'], "p://") || substr($reaction['reaction_image'], 0, 1) == "/")
 	    {
@@ -591,7 +591,7 @@ if(!$mybb->input['action'])
 
 		$item .= '</div>';
 
-		if($reaction['reaction_facebook'])
+		if(!empty($reaction['reaction_facebook']))
 		{
 			if($reaction['reaction_facebook_primary'])
 			{
@@ -601,7 +601,7 @@ if(!$mybb->input['action'])
 
 	    $item .= '<div style="border-top:1px solid #ccc;margin-top:10px;padding-top:10px">';
 
-		if($reaction['reaction_facebook'])
+        if(!empty($reaction['reaction_facebook']))
 		{
 			$item .= '<img src="../images/reactions/facebook_reactions/'.$reaction['reaction_facebook'].'.jpg" style="border: 2px solid #fff;border-radius: 20px" width="20" height="20" />';
 		}
@@ -638,7 +638,7 @@ if(!$mybb->input['action'])
 			else
 			{
 				$table->construct_cell('<img src="../images/reactions/facebook_reactions/'.$fbr.'.jpg" style="border: 2px solid #fff;border-radius: 32px" width="32" height="32" />', array("style" => "text-align:right"));
-				$table->construct_cell('<img src="../'.$facebook_reaction_emojis[$fbr]['primary']['reaction_image'].'" style="padding: 2px" width="32" height="32" />');
+				$table->construct_cell('<img src="../'.($facebook_reaction_emojis[$fbr]['primary']['reaction_image'] ?? '').'" style="padding: 2px" width="32" height="32" />');
 			}
 		}
 		$table->construct_row();

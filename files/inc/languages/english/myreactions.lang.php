@@ -51,4 +51,5 @@ $l['myreactions_reacted_count'] = 'Times Given';
 $l['myreactions_reacted_user'] = 'User';
 $l['myreactions_reacted_users'] = 'Users';
 $l['myreactions_reacted_date'] = 'Date';
-?>
+
+$l['myreactions_myalerts_myreactions_received_reaction'] = '{1} reacted to your post.';

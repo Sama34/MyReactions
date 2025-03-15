@@ -30,6 +30,8 @@ if(!defined("IN_MYBB"))
 
 define("MYREACTIONS_VERSION", "0.0.4");
 
+define("MYREACTIONS_MYALERTS_VERSION", "2.1.0");
+
 $plugins->add_hook('showthread_start', 'myreactions_showthread');
 $plugins->add_hook('postbit', 'myreactions_postbit');
 $plugins->add_hook('forumdisplay_thread', 'myreactions_forumdisplay');
@@ -41,6 +43,9 @@ $plugins->add_hook("admin_forum_action_handler", "myreactions_admin_forum_action
 $plugins->add_hook("admin_forum_permissions", "myreactions_admin_forum_permissions");
 $plugins->add_hook("admin_page_output_footer", "myreactions_settings_footer");
 $plugins->add_hook('admin_config_settings_change', 'myreactions_settings');
+$plugins->add_hook('global_start', 'myreactions_global_start', 5);
+$plugins->add_hook('xmlhttp', 'myreactions_xmlhttp', 9);
+$plugins->add_hook('myalerts_register_client_alert_formatters', 'myreactions_myalerts_register_client_alert_formatters');
 
 global $templatelist;
 $templatelist .= ',myreactions_container,myreactions_reactions,myreactions_reaction,myreactions_reaction_image,myreactions_add,myreactions_react,myreactions_react_favourites,myreactions_profile,myreactions_reacted_button,myreactions_reacted,myreactions_reacted_row_grouped,myreactions_reacted_row_linear,myreactions_reacted_row_user';
@@ -166,7 +171,7 @@ function myreactions_postbit(&$post, $faked = false)
 	$lang->load('myreactions');
 
 	$received_reactions = $reacted_ids = $reacted_reactions = array();
-	if(array_key_exists($post['pid'], $thread_reactions))
+    if(is_array($thread_reactions) && array_key_exists($post['pid'], $thread_reactions))
 	{
 		$received_reactions = $thread_reactions[$post['pid']];
 		foreach($received_reactions as $reaction)
@@ -181,7 +186,7 @@ function myreactions_postbit(&$post, $faked = false)
 
 	$size = $mybb->settings['myreactions_size'];
 	$post_reactions = '';
-	if($mybb->input['myreactions_debug'])
+	if(isset($mybb->input['myreactions_debug']))
 	{
 		$mybb->settings['myreactions_type'] = $mybb->input['myreactions_type'];
 	}
@@ -245,7 +250,7 @@ function myreactions_postbit(&$post, $faked = false)
 			{
 				$reaction = $all_reactions[$rid];
 				$count = $info['count'];
-				$class = $onclick = $title = '';
+				$class = $onclick = $title = $remove = '';
 				eval("\$reaction_image = \"".$templates->get('myreactions_reaction_image')."\";");
 				$title = ' title="'.$info['name'];
 				if(in_array($rid, $reacted_reactions) && !$faked)
@@ -280,6 +285,12 @@ function myreactions_postbit(&$post, $faked = false)
 	{
 		eval("\$post['myreactions'] = \"".$templates->get('myreactions_container')."\";");
 	}
+
+    $post['reactions_received'] = $post['reactions_received'] ?? '';
+
+    $post['reactions_given'] = $post['reactions_given'] ?? '';
+
+    isset($post['user_details']) || $post['user_details'] = '';
 
 	$post['user_details'] = str_replace('{myreactions}', '<br />'.$lang->sprintf($lang->myreactions_received_postbit, '<a href="javascript:void(0)" onclick="MyReactions.reactedUser('.$post['uid'].', \'received\');"><strong>'.$post['reactions_received'].'</strong></a>').'<br />'.$lang->sprintf($lang->myreactions_given_postbit, '<a href="javascript:void(0)" onclick="MyReactions.reactedUser('.$post['uid'].', \'given\');"><strong>'.$post['reactions_given'].'</strong></a>'), $post['user_details']);
 }
@@ -333,6 +344,8 @@ function myreactions_misc()
 
 	if($mybb->input['action'] == 'myreactions')
 	{
+        $favourites = $given_to_post = '';
+
 		$all_reactions = $cache->read('myreactions');
 		$lang->load('myreactions');
 
@@ -356,7 +369,7 @@ function myreactions_misc()
 		{
 			$has_favourites = true;
 			$reaction = $all_reactions[$favourite_reaction['post_reaction_rid']];
-			$class = $onclick = '';
+			$class = $onclick = $remove = '';
 			if(in_array($favourite_reaction['post_reaction_rid'], $given_reactions))
 			{
 				$class = ' class="disabled"';
@@ -404,7 +417,7 @@ function myreactions_misc()
 
 		foreach($all_reactions as $reaction)
 		{
-			$class = $onclick = '';
+			$class = $onclick = $remove = '';
 			if(in_array($reaction['reaction_id'], $given_reactions))
 			{
 				$class = ' class="disabled"';
@@ -444,7 +457,9 @@ function myreactions_misc()
 			error($lang->myreactions_already_reacted);
 		}
 
-		$db->insert_query('post_reactions', array('post_reaction_pid' => $post['pid'], 'post_reaction_rid' => $mybb->input['rid'], 'post_reaction_uid' => $mybb->user['uid'], 'post_reaction_date' => TIME_NOW));
+        $post_reaction_id = (int)$db->insert_query('post_reactions', array('post_reaction_pid' => $post['pid'], 'post_reaction_rid' => $mybb->input['rid'], 'post_reaction_uid' => $mybb->user['uid'], 'post_reaction_date' => TIME_NOW));
+
+        myreactions_myalerts_send($post_reaction_id, (int)$post['uid']);
 
 		myreactions_recount_received($post['uid']);
 		myreactions_recount_given($mybb->user['uid']);
@@ -535,6 +550,8 @@ function myreactions_misc()
 		$reacted_grouped = $reacted_linear = $reacted_user = '';
 		foreach($reactions_grouped as $i => $r)
 		{
+            $class = $onclick = $remove = '';
+
 			$trow = alt_trow($i == 0);
 			$reaction = $r['reacted'][0];
 			$title = ' title="'.$r['reacted'][0]['reaction_name'].'"';
@@ -570,6 +587,7 @@ function myreactions_misc()
 			$users = implode(', ', $built_users);
 			eval("\$reacted_grouped .= \"".$templates->get('myreactions_reacted_row_grouped', 1, 0)."\";");
 		}
+        $reacted_all = '';
 		foreach($reactions_linear as $i => $r)
 		{
 			$trow = alt_trow($i == 0);
@@ -631,14 +649,14 @@ function myreactions_forumdisplay()
 			$tids[] = $t['tid'];
 		}
 		$query = $db->write_query('
-			SELECT r.*, t.tid, count(post_reaction_id) AS count
+			SELECT r.*, t.tid, count(post_reaction_id) AS count, pr.post_reaction_date
 			FROM '.TABLE_PREFIX.'myreactions r
 			JOIN '.TABLE_PREFIX.'post_reactions pr ON pr.post_reaction_rid = r.reaction_id
 			JOIN '.TABLE_PREFIX.'posts p on p.pid = pr.post_reaction_pid
 			JOIN '.TABLE_PREFIX.'threads t on t.tid = p.tid
 			WHERE t.tid IN('.implode(',', $tids).')
 			'.$where.'
-			GROUP BY t.tid, reaction_id ORDER BY t.tid ASC, count DESC, pr.post_reaction_date ASC
+			GROUP BY t.tid, reaction_id, pr.post_reaction_date ORDER BY t.tid ASC, count DESC, pr.post_reaction_date ASC
 		');
 		while($reaction = $db->fetch_array($query))
 		{
@@ -886,4 +904,89 @@ function myreactions_myalerts_type_id()
 
 	$query = $db->simple_select('alert_types', 'id', 'code = \'myreactions_received_reaction\'');
 	return $db->fetch_field($query, 'id');
+}
+
+function myreactions_myalerts_initiate(): bool
+{
+    if (!function_exists('myalerts_info')) {
+        return false;
+    }
+
+    if (class_exists('MybbStuff_MyAlerts_Formatter_AbstractFormatter')) {
+        require_once MYBB_ROOT.'inc/plugins/myreactions/class_alerts.php';
+    }
+
+    if (version_compare(myalerts_info()['version'], MYREACTIONS_MYALERTS_VERSION) <= 0) {
+        myreactions_myalerts_register_client_alert_formatters();
+    }
+
+    return true;
+}
+
+function myreactions_global_start()
+{
+    myreactions_myalerts_initiate();
+}
+
+function myreactions_xmlhttp()
+{
+    myreactions_myalerts_initiate();
+}
+
+function myreactions_myalerts_register_client_alert_formatters(): bool
+{
+    if (
+        class_exists('MybbStuff_MyAlerts_Formatter_AbstractFormatter') &&
+        class_exists('MybbStuff_MyAlerts_AlertFormatterManager') &&
+        class_exists('MyReactionsMyAlertsFormatter')
+    ) {
+        global $mybb, $lang;
+
+        $formatterManager = MybbStuff_MyAlerts_AlertFormatterManager::getInstance();
+
+        if (!$formatterManager) {
+            $formatterManager = MybbStuff_MyAlerts_AlertFormatterManager::createInstance($mybb, $lang);
+        }
+
+        if ($formatterManager) {
+            $formatterManager->registerFormatter(new MyReactionsMyAlertsFormatter($mybb, $lang, 'myreactions_received_reaction'));
+        }
+    }
+
+    return true;
+}
+
+function myreactions_myalerts_send(int $object_id, int $user_id): bool
+{
+    global $lang, $mybb, $alertType, $db;
+
+    $lang->load('myreactions');
+
+    if (!class_exists('MybbStuff_MyAlerts_AlertTypeManager')) {
+        return false;
+    }
+
+    $alertType = MybbStuff_MyAlerts_AlertTypeManager::getInstance()->getByCode('myreactions_received_reaction');
+
+    if (!$alertType) {
+        return false;
+    }
+
+    $query = $db->simple_select(
+        'alerts',
+        'id',
+        "object_id='{$object_id}' AND uid='{$user_id}' AND unread=1 AND alert_type_id='{$alertType->getId()}'"
+    );
+
+    if ($db->fetch_field($query, 'id')) {
+        return false;
+    }
+
+    if ($alertType !== null && $alertType->getEnabled()) {
+        $alert = new MybbStuff_MyAlerts_Entity_Alert($user_id, $alertType, $object_id);
+
+        MybbStuff_MyAlerts_AlertManager::getInstance()->addAlert($alert);
+    }
+
+    return true;
 }

@@ -62,7 +62,7 @@ function myreactions_do_is_installed()
 
 function myreactions_do_uninstall()
 {
-	global $db;
+	global $db, $cache;
 
 	if($db->table_exists('myreactions'))
 	{
@@ -92,6 +92,19 @@ function myreactions_do_uninstall()
 			$db->delete_query('alert_types', 'id = '.$myalerts_type_id);
 		}
 	}
+
+    if (class_exists('MybbStuff_MyAlerts_AlertTypeManager')) {
+        global $alertTypeManager;
+
+        isset($alertTypeManager) || $alertTypeManager = MybbStuff_MyAlerts_AlertTypeManager::createInstance(
+            $db,
+            $cache
+        );
+
+        $alertTypeManager = MybbStuff_MyAlerts_AlertTypeManager::getInstance();
+
+        $alertTypeManager->deleteByCode('myreactions_received_reaction');
+    }
 }
 
 function myreactions_do_db_changes()
@@ -243,6 +256,27 @@ thread=Reactions given in whole thread",
 	}
 
 	rebuild_settings();
+
+    if (class_exists('MybbStuff_MyAlerts_AlertTypeManager')) {
+        global $alertTypeManager;
+
+        isset($alertTypeManager) || $alertTypeManager = MybbStuff_MyAlerts_AlertTypeManager::createInstance(
+            $db,
+            $mybb->cache
+        );
+
+        $alertTypeManager = MybbStuff_MyAlerts_AlertTypeManager::getInstance();
+
+        $alertType = new MybbStuff_MyAlerts_Entity_AlertType();
+
+        $alertType->setCode('myreactions_received_reaction');
+
+        $alertType->setEnabled();
+
+        $alertType->setCanBeUserDisabled();
+
+        $alertTypeManager->add($alertType);
+    }
 
 	require_once MYBB_ROOT . 'inc/adminfunctions_templates.php';
 
